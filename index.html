@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conversor de Moedas - Moedas Aceitas pelo Wise</title>
+    <title>Conversor de Moedas - Taxas em Tempo Real</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -197,6 +197,37 @@
             border-left: 4px solid var(--secondary-color);
         }
         
+        .api-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-online {
+            background-color: #4caf50;
+        }
+        
+        .status-offline {
+            background-color: #f44336;
+        }
+        
+        .last-updated {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+        
         footer {
             text-align: center;
             margin-top: 30px;
@@ -230,8 +261,8 @@
             <div class="logo">
                 <i class="fas fa-exchange-alt"></i>
             </div>
-            <h1>Conversor de Moedas Internacionais</h1>
-            <p class="description">Converta entre moedas aceitas pelo Wise com taxas de câmbio atualizadas</p>
+            <h1>Conversor de Moedas em Tempo Real</h1>
+            <p class="description">Converta entre moedas com taxas de câmbio atualizadas em tempo real</p>
         </header>
         
         <div class="converter">
@@ -264,19 +295,24 @@
         <div class="result">
             <div class="result-value" id="resultValue">100.00 USD = 89.23 EUR</div>
             <div class="result-details" id="resultDetails">Taxa de câmbio: 1 USD = 0.8923 EUR</div>
+            <div class="api-status">
+                <span class="status-indicator status-online" id="statusIndicator"></span>
+                <span id="apiStatusText">Conectado à API de câmbio</span>
+            </div>
+            <div class="last-updated" id="lastUpdated">Última atualização: -</div>
         </div>
         
         <div class="disclaimer">
-            <p><strong>Nota:</strong> Este conversor usa taxas de câmbio aproximadas para fins informativos. As taxas reais do Wise podem variar dependendo do valor e do método de pagamento. Consulte o site oficial do Wise para taxas exatas.</p>
+            <p><strong>Nota:</strong> Este conversor utiliza a API do ExchangeRate-API para obter taxas de câmbio em tempo real. As taxas são atualizadas a cada hora. Para transações reais, consulte sempre o site oficial do Wise ou Revolut para taxas exatas.</p>
         </div>
     </div>
 
     <footer>
-        <p>&copy; 2025 Leonel Silima - LOSTEC. Conversor de Moedas </p>
+        <p>&copy; 2025 Leonel Silima - LOSTEC. Conversor de Moedas em Tempo Real</p>
     </footer>
 
     <script>
-        // Moedas aceitas pelo Wise (com símbolos e nomes) - incluindo MZN e AOA
+        // Moedas suportadas (com símbolos e nomes)
         const currencies = [
             { code: "USD", name: "Dólar Americano", symbol: "$" },
             { code: "EUR", name: "Euro", symbol: "€" },
@@ -322,52 +358,6 @@
             { code: "AOA", name: "Kwanza Angolano", symbol: "Kz" }
         ];
 
-        // Taxas de câmbio de exemplo (em relação ao USD) - incluindo MZN e AOA
-        const exchangeRates = {
-            USD: 1,
-            EUR: 0.93,
-            GBP: 0.80,
-            BRL: 5.45,
-            CAD: 1.36,
-            AUD: 1.52,
-            JPY: 150.25,
-            CHF: 0.90,
-            CNY: 7.20,
-            DKK: 6.93,
-            SEK: 10.58,
-            NOK: 10.72,
-            SGD: 1.35,
-            NZD: 1.66,
-            MXN: 17.05,
-            HKD: 7.82,
-            TRY: 32.05,
-            INR: 83.10,
-            IDR: 15650,
-            PLN: 4.05,
-            THB: 36.10,
-            ZAR: 18.90,
-            HUF: 360.50,
-            CZK: 23.40,
-            ILS: 3.75,
-            PHP: 56.20,
-            AED: 3.67,
-            CLP: 950,
-            TWD: 31.75,
-            SAR: 3.75,
-            MYR: 4.75,
-            RON: 4.65,
-            ARS: 835,
-            COP: 3900,
-            PEN: 3.75,
-            VND: 24750,
-            KRW: 1335,
-            NGN: 900,
-            EGP: 30.90,
-            PKR: 280,
-            MZN: 63.80,
-            AOA: 825.50
-        };
-
         // Elementos do DOM
         const fromCurrencySelect = document.getElementById('fromCurrency');
         const toCurrencySelect = document.getElementById('toCurrency');
@@ -376,6 +366,13 @@
         const swapButton = document.getElementById('swapButton');
         const resultValue = document.getElementById('resultValue');
         const resultDetails = document.getElementById('resultDetails');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const apiStatusText = document.getElementById('apiStatusText');
+        const lastUpdated = document.getElementById('lastUpdated');
+
+        // Variáveis para armazenar as taxas de câmbio
+        let exchangeRates = {};
+        let lastUpdateTime = null;
 
         // Preencher os selects com as moedas
         function populateCurrencySelects() {
@@ -400,6 +397,100 @@
             toCurrencySelect.value = 'BRL';
         }
 
+        // Buscar taxas de câmbio da API
+        async function fetchExchangeRates() {
+            const apiKey = 'seu_api_key_aqui'; // Em produção, use uma chave API válida
+            const baseCurrency = 'USD';
+            
+            try {
+                // Atualizar status para conectando
+                statusIndicator.className = 'status-indicator status-online';
+                apiStatusText.textContent = 'Conectando à API...';
+                
+                // Usando uma API de câmbio gratuita (ExchangeRate-API)
+                const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${baseCurrency}`);
+                
+                if (!response.ok) {
+                    throw new Error('Falha ao buscar taxas de câmbio');
+                }
+                
+                const data = await response.json();
+                
+                // Preencher as taxas de câmbio
+                exchangeRates = data.rates;
+                lastUpdateTime = new Date(data.time_last_updated * 1000);
+                
+                // Atualizar UI
+                statusIndicator.className = 'status-indicator status-online';
+                apiStatusText.textContent = 'Conectado à API de câmbio';
+                lastUpdated.textContent = `Última atualização: ${lastUpdateTime.toLocaleTimeString()}`;
+                
+                // Converter com as novas taxas
+                convertCurrency();
+                
+            } catch (error) {
+                console.error('Erro ao buscar taxas:', error);
+                
+                // Usar taxas fallback em caso de erro
+                useFallbackRates();
+                
+                statusIndicator.className = 'status-indicator status-offline';
+                apiStatusText.textContent = 'Usando taxas locais (offline)';
+                lastUpdated.textContent = 'Não foi possível conectar à API';
+            }
+        }
+
+        // Usar taxas fallback em caso de falha na API
+        function useFallbackRates() {
+            // Taxas de câmbio de exemplo (em relação ao USD)
+            exchangeRates = {
+                USD: 1,
+                EUR: 0.93,
+                GBP: 0.80,
+                BRL: 5.45,
+                CAD: 1.36,
+                AUD: 1.52,
+                JPY: 150.25,
+                CHF: 0.90,
+                CNY: 7.20,
+                DKK: 6.93,
+                SEK: 10.58,
+                NOK: 10.72,
+                SGD: 1.35,
+                NZD: 1.66,
+                MXN: 17.05,
+                HKD: 7.82,
+                TRY: 32.05,
+                INR: 83.10,
+                IDR: 15650,
+                PLN: 4.05,
+                THB: 36.10,
+                ZAR: 18.90,
+                HUF: 360.50,
+                CZK: 23.40,
+                ILS: 3.75,
+                PHP: 56.20,
+                AED: 3.67,
+                CLP: 950,
+                TWD: 31.75,
+                SAR: 3.75,
+                MYR: 4.75,
+                RON: 4.65,
+                ARS: 835,
+                COP: 3900,
+                PEN: 3.75,
+                VND: 24750,
+                KRW: 1335,
+                NGN: 900,
+                EGP: 30.90,
+                PKR: 280,
+                MZN: 63.80,
+                AOA: 825.50
+            };
+            
+            lastUpdateTime = new Date();
+        }
+
         // Converter moedas
         function convertCurrency() {
             const amount = parseFloat(amountInput.value);
@@ -411,20 +502,35 @@
             const fromCurrency = fromCurrencySelect.value;
             const toCurrency = toCurrencySelect.value;
             
+            // Verificar se temos taxas disponíveis
+            if (Object.keys(exchangeRates).length === 0) {
+                resultValue.textContent = 'Carregando taxas...';
+                resultDetails.textContent = 'Aguarde enquanto buscamos as taxas mais recentes';
+                return;
+            }
+            
             // Encontrar símbolos das moedas
             const fromSymbol = currencies.find(c => c.code === fromCurrency)?.symbol || '';
             const toSymbol = currencies.find(c => c.code === toCurrency)?.symbol || '';
             
-            // Calcular a conversão
-            const fromRate = exchangeRates[fromCurrency];
-            const toRate = exchangeRates[toCurrency];
+            // Se a moeda de origem for USD, usar a taxa diretamente
+            let convertedAmount, exchangeRate;
             
-            // Converter via USD como moeda intermediária
-            const amountInUSD = amount / fromRate;
-            const convertedAmount = amountInUSD * toRate;
-            
-            // Calcular taxa de câmbio
-            const exchangeRate = convertedAmount / amount;
+            if (fromCurrency === 'USD') {
+                exchangeRate = exchangeRates[toCurrency] || 1;
+                convertedAmount = amount * exchangeRate;
+            } 
+            // Se a moeda de destino for USD
+            else if (toCurrency === 'USD') {
+                exchangeRate = 1 / (exchangeRates[fromCurrency] || 1);
+                convertedAmount = amount * exchangeRate;
+            }
+            // Para outras combinações, converter via USD
+            else {
+                const amountInUSD = amount / (exchangeRates[fromCurrency] || 1);
+                convertedAmount = amountInUSD * (exchangeRates[toCurrency] || 1);
+                exchangeRate = convertedAmount / amount;
+            }
             
             // Exibir resultado
             resultValue.textContent = `${formatCurrency(amount, fromSymbol, fromCurrency)} = ${formatCurrency(convertedAmount, toSymbol, toCurrency)}`;
@@ -466,7 +572,9 @@
         // Inicializar a aplicação
         function initApp() {
             populateCurrencySelects();
-            convertCurrency();
+            
+            // Buscar taxas de câmbio ao inicializar
+            fetchExchangeRates();
             
             // Event listeners
             convertButton.addEventListener('click', convertCurrency);
@@ -474,9 +582,12 @@
             amountInput.addEventListener('input', convertCurrency);
             fromCurrencySelect.addEventListener('change', convertCurrency);
             toCurrencySelect.addEventListener('change', convertCurrency);
+            
+            // Atualizar taxas a cada 5 minutos
+            setInterval(fetchExchangeRates, 5 * 60 * 1000);
         }
 
-        // Iniciar quando o DOM estender carregado
+        // Iniciar quando o DOM estiver carregado
         document.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
